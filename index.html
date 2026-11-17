@@ -1,0 +1,262 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Little Runner Game</title>
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;background:#f4f6f8;color:#30343b;
+ font-family:Arial,sans-serif;text-align:center;
+}
+main{max-width:950px;margin:45px auto;padding:15px}
+h1{font-size:32px}
+.game{
+ position:relative;background:white;border:1px solid #ddd;
+ border-radius:12px;overflow:hidden;
+ touch-action:none;
+}
+canvas{display:block;width:100%;height:auto;touch-action:none}
+.score{
+ position:absolute;right:18px;top:15px;
+ font:bold 18px monospace;
+}
+.overlay{
+ position:absolute;inset:0;background:#ffffffdd;
+ display:flex;align-items:center;justify-content:center;
+ flex-direction:column;gap:15px;
+}
+.hidden{display:none}
+button{
+ background:#1a73e8;color:white;border:0;
+ padding:13px 28px;border-radius:8px;
+ font-size:16px;font-weight:bold;
+}
+.help{color:#777;font-size:13px;margin:15px}
+</style>
+</head>
+<body>
+<main>
+<h1>🦖 Little Runner</h1>
+<p>Jump over obstacles and beat your high score!</p>
+
+<div class="game" id="game">
+<canvas id="canvas" width="900" height="300"></canvas>
+<div class="score" id="score">00000</div>
+
+<div class="overlay" id="overlay">
+<h2 id="message">Ready to Run?</h2>
+<button id="start">START GAME</button>
+<p>Tap screen or press SPACE to jump</p>
+</div>
+</div>
+
+<div class="help">
+📱 Tap anywhere to jump<br>
+⌨️ SPACE / UP ARROW = Jump | P = Pause | R = Restart
+</div>
+</main>
+
+<script>
+const canvas=document.getElementById("canvas");
+const ctx=canvas.getContext("2d");
+const overlay=document.getElementById("overlay");
+const scoreDisplay=document.getElementById("score");
+const startButton=document.getElementById("start");
+const message=document.getElementById("message");
+
+const W=900,H=300,ground=244;
+
+let player,obstacles,clouds;
+let score=0,speed=6,spawn=60;
+let running=false,paused=false,last=0;
+let highScore=Number(localStorage.getItem("runnerHigh")||0);
+
+function reset(){
+ player={x:82,y:200,w:34,h:44,vy:0,onGround:true};
+ obstacles=[];
+ clouds=[{x:200,y:60},{x:500,y:90},{x:800,y:50}];
+ score=0;speed=6;spawn=60;
+ running=true;paused=false;last=0;
+ scoreDisplay.textContent="00000";
+ overlay.classList.add("hidden");
+ requestAnimationFrame(loop);
+}
+
+function jump(){
+ if(!running){reset();return;}
+ if(paused)return;
+ if(player.onGround){
+  player.vy=-14.5;
+  player.onGround=false;
+ }
+}
+
+// Mobile touch controls
+canvas.addEventListener("pointerdown",e=>{
+ e.preventDefault();
+ jump();
+});
+
+startButton.addEventListener("click",()=>{
+ if(paused){
+  paused=false;
+  overlay.classList.add("hidden");
+  last=0;
+  requestAnimationFrame(loop);
+ }else reset();
+});
+
+window.addEventListener("keydown",e=>{
+ if(["Space","ArrowUp","KeyW"].includes(e.code)){
+  e.preventDefault();
+  jump();
+ }
+ if(e.code==="KeyP")togglePause();
+ if(e.code==="KeyR")reset();
+});
+
+function togglePause(){
+ if(!running)return;
+ paused=!paused;
+ if(paused){
+  message.textContent="PAUSED";
+  startButton.textContent="RESUME";
+  overlay.classList.remove("hidden");
+ }else{
+  overlay.classList.add("hidden");
+  last=0;
+  requestAnimationFrame(loop);
+ }
+}
+
+function drawPlayer(){
+ let x=player.x,y=player.y;
+ ctx.fillStyle="#30343b";
+ ctx.fillRect(x+5,y+9,25,27);
+ ctx.fillRect(x+20,y,14,18);
+ ctx.fillRect(x+27,y+12,12,5);
+ ctx.fillStyle="white";
+ ctx.fillRect(x+29,y+4,3,3);
+ ctx.fillStyle="#30343b";
+ ctx.fillRect(x+8,y+34,7,10);
+ ctx.fillRect(x+23,y+34,7,10);
+ ctx.fillRect(x,y+20,8,6);
+}
+
+function drawCactus(o){
+ ctx.fillStyle="#269b55";
+ ctx.fillRect(o.x+8,o.y,13,o.h);
+ ctx.fillRect(o.x,o.y+13,10,7);
+ ctx.fillRect(o.x,o.y+13,6,19);
+ ctx.fillRect(o.x+18,o.y+23,12,7);
+ ctx.fillRect(o.x+24,o.y+23,6,17);
+}
+
+function draw(){
+ ctx.clearRect(0,0,W,H);
+
+ // Clouds
+ ctx.fillStyle="#e9eef2";
+ clouds.forEach(c=>{
+  ctx.beginPath();
+  ctx.arc(c.x,c.y,13,0,Math.PI*2);
+  ctx.arc(c.x+15,c.y-5,17,0,Math.PI*2);
+  ctx.arc(c.x+31,c.y,12,0,Math.PI*2);
+  ctx.fill();
+ });
+
+ // Ground
+ ctx.strokeStyle="#aeb5bc";
+ ctx.lineWidth=2;
+ ctx.beginPath();
+ ctx.moveTo(0,ground);
+ ctx.lineTo(W,ground);
+ ctx.stroke();
+
+ ctx.fillStyle="#c6ccd2";
+ for(let i=0;i<W;i+=38){
+  ctx.fillRect((i-score*speed*.7)%W,ground+13,17,2);
+ }
+
+ drawPlayer();
+ obstacles.forEach(drawCactus);
+}
+
+function collision(a,b){
+ return a.x<b.x+b.w&&a.x+a.w>b.x&&
+ a.y<b.y+b.h&&a.y+a.h>b.y;
+}
+
+function gameOver(){
+ running=false;
+ if(Math.floor(score)>highScore){
+  highScore=Math.floor(score);
+  localStorage.setItem("runnerHigh",highScore);
+ }
+ message.innerHTML="GAME OVER<br>Score: "+Math.floor(score)+
+ "<br>Best: "+highScore;
+ startButton.textContent="PLAY AGAIN";
+ overlay.classList.remove("hidden");
+}
+
+function loop(t){
+ if(!running||paused)return;
+
+ let dt=Math.min((t-last)/16.67||1,2);
+ last=t;
+
+ player.vy+=.78*dt;
+ player.y+=player.vy*dt;
+
+ if(player.y>=ground-player.h){
+  player.y=ground-player.h;
+  player.vy=0;
+  player.onGround=true;
+ }
+
+ speed=Math.min(6+score/250,13);
+ spawn-=dt;
+
+ if(spawn<=0){
+  let h=32+Math.random()*25;
+  obstacles.push({x:W+20,y:ground-h,w:30,h});
+  spawn=65+Math.random()*45;
+ }
+
+ obstacles.forEach(o=>o.x-=speed*dt);
+ obstacles=obstacles.filter(o=>o.x+o.w>0);
+
+ clouds.forEach(c=>{
+  c.x-=.45*dt;
+  if(c.x<-60)c.x=W+30;
+ });
+
+ for(const o of obstacles){
+  if(collision(
+   {x:player.x+5,y:player.y+4,w:player.w-8,h:player.h-5},
+   {x:o.x+3,y:o.y+2,w:o.w-5,h:o.h-2}
+  )){
+   gameOver();
+   draw();
+   return;
+  }
+ }
+
+ score+=.16*dt*speed;
+ scoreDisplay.textContent=String(Math.floor(score)).padStart(5,"0");
+
+ draw();
+ requestAnimationFrame(loop);
+}
+
+// Initial screen
+player={x:82,y:200,w:34,h:44,vy:0,onGround:true};
+obstacles=[];
+clouds=[{x:200,y:60},{x:500,y:90},{x:800,y:50}];
+draw();
+</script>
+</body>
+</html>
